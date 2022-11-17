@@ -4,6 +4,33 @@
 #include <iostream>
 
 namespace {
+
+bool isFFTSize(size_t N) {
+  std::vector<size_t> factors = {2, 3, 5, 7};
+  for (size_t factor : factors) {
+    while (N >= factor && N % factor == 0) {
+      N /= factor;
+    }
+  }
+  return N == 1;
+}
+
+bool testFFTSize() {
+  using namespace fftpp;
+  bool success = true;
+  for (size_t i = 1; success && i <= 16; ++i)
+    success = success && fftSize(i) == i;
+
+  for (size_t i = 17; success && i <= 2000; ++i) {
+    size_t j = fftSize(i);
+    success = success && j >= i && j <= 2 * i && isFFTSize(j);
+  }
+
+  return success && fftSize(17) == 18 && fftSize(18) == 18 &&
+         fftSize(19) == 20 && fftSize(20) == 20 && fftSize(27) == 27 &&
+         fftSize(28) == 28 && fftSize(53) == 54 && fftSize(1023) == 1024;
+}
+
 template <typename T>
 bool testFFTRand(size_t N, std::int64_t xstride, std::int64_t ystride) {
   T two_pi = static_cast<T>(2 * 3.141592653589793238462643383279);
@@ -36,9 +63,6 @@ bool testFFTRand(size_t N, std::int64_t xstride, std::int64_t ystride) {
       return false;
     }
   }
-
-  if (e > 1e-10 && std::is_same_v<T, double>)
-    std::cout << N << ":" << e << std::endl;
 
   return true;
 }
@@ -152,22 +176,22 @@ template <typename T> bool testFFTType() {
     }
   }
   auto t1 = std::chrono::high_resolution_clock::now();
-  size_t num2D = 1000;
-  for (size_t n = 1; n < num2D; ++n) {
-    if (!testFFT2D<T>(n, n % 7 + 9, nullptr)) {
+  size_t start2D = 1;
+  size_t end2D = 2000;
+  for (size_t n = start2D; n < end2D; ++n) {
+    if (!testFFT2D<T>(n, n % 7 + 19, nullptr)) {
+      return false;
+    }
+  }
+
+  fftpp::ThreadScheduler scheduler(3);
+  for (size_t n = start2D; n < end2D; ++n) {
+    if (!testFFT2D<T>(n, n % 7 + 19, &scheduler)) {
       return false;
     }
   }
 
   auto t2 = std::chrono::high_resolution_clock::now();
-  fftpp::ThreadScheduler scheduler(3);
-  for (size_t n = 1; n < num2D; ++n) {
-    if (!testFFT2D<T>(n, n % 7 + 9, &scheduler)) {
-      return false;
-    }
-  }
-
-  auto t3 = std::chrono::high_resolution_clock::now();
 
   std::cout << "1D test time: "
             << std::chrono::duration_cast<std::chrono::duration<double>>(t1 -
@@ -179,24 +203,94 @@ template <typename T> bool testFFTType() {
                                                                          t1)
                    .count()
             << std::endl;
-  std::cout << "Threaded 2D test time: "
-            << std::chrono::duration_cast<std::chrono::duration<double>>(t3 -
-                                                                         t2)
+  return true;
+}
+
+template <typename T> void fftTimer(size_t N, size_t numIterations = 10000) {
+  std::vector<std::complex<T>> x(N, 0);
+  std::vector<std::complex<T>> y(N);
+  std::vector<std::complex<T>> tmp(N);
+  fftpp::FFT<T> dft(N);
+  auto t0 = std::chrono::high_resolution_clock::now();
+  for (int i = 0; i < numIterations; ++i) {
+    dft.transform(y.data(), 1, x.data(), 1, tmp.data(),
+                  fftpp::TransformDirection::Forward);
+    dft.transform(x.data(), 1, y.data(), 1, tmp.data(),
+                  fftpp::TransformDirection::Forward);
+  }
+  auto t1 = std::chrono::high_resolution_clock::now();
+  std::cout << numIterations << " iterations of size " << N << " runtime: "
+            << std::chrono::duration_cast<std::chrono::duration<double>>(t1 -
+                                                                         t0)
                    .count()
             << std::endl;
-  return true;
+}
+
+template <typename T>
+void fft2DTimer(size_t rows, size_t cols, size_t threads) {
+  std::vector<std::complex<float>> x(rows * cols, 1);
+  std::vector<std::complex<float>> y(rows * cols);
+  fftpp::ThreadScheduler scheduler(threads);
+  auto t0 = std::chrono::high_resolution_clock::now();
+  fftpp::fft2D<T>(y.data(), x.data(), rows, cols,
+                  fftpp::TransformDirection::Forward, nullptr, &scheduler);
+  auto t1 = std::chrono::high_resolution_clock::now();
+  std::cout << "2D (rows=" << rows << ",cols=" << cols << " FFT time with "
+            << threads << " threads runtime : "
+            << std::chrono::duration_cast<std::chrono::duration<double>>(t1 -
+                                                                         t0)
+                   .count()
+            << std::endl;
 }
 } // namespace
 
+#define RUN_TEST_FUNCTION(testFunctionName)                                    \
+  std::cout << "Running " << #testFunctionName << std::endl;                   \
+  totalTests++;                                                                \
+  if (testFunctionName()) {                                                    \
+    std::cout << "Passed " << #testFunctionName << std::endl;                  \
+    succeededTests++;                                                          \
+  } else {                                                                     \
+    std::cout << "Failed " << #testFunctionName << std::endl;                  \
+  }
+
 int main() {
+  size_t succeededTests = 0;
+  size_t totalTests = 0;
+
   try {
-    testFFTType<long double>();
-    testFFTType<double>();
-    testFFTType<float>();
+    RUN_TEST_FUNCTION(testFFTSize)
+    RUN_TEST_FUNCTION(testFFTType<float>)
+    RUN_TEST_FUNCTION(testFFTType<double>)
+    RUN_TEST_FUNCTION(testFFTType<long double>)
   } catch (std::exception &e) {
     std::cout << "Exception during FFT testing: " << e.what() << std::endl;
-    return -1;
+    return -2;
   }
-  std::cout << "Successfully tested FFT" << std::endl;
-  return 0;
+
+  int returnValue = -1;
+  if (succeededTests == totalTests) {
+    std::cout << "Successfully tested FFT" << std::endl;
+    returnValue = 0;
+  } else {
+    std::cout << "Failed FFT testing" << std::endl;
+    returnValue = -1;
+  }
+
+  std::cout << "Timing several FFTs" << std::endl;
+  for (int i = 0; i < 3; ++i) {
+
+    fftTimer<float>(128 * 15);
+    fftTimer<float>(128 * 16);
+    fftTimer<float>(128 * 32);
+  }
+
+  for (int i = 0; i < 3; ++i) {
+    size_t rows = 4456;
+    size_t cols = 4500;
+    fft2DTimer<float>(rows, cols, 1);
+    fft2DTimer<float>(rows, cols, 4);
+  }
+
+  return returnValue;
 }
