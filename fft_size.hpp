@@ -27,27 +27,29 @@ inline size_t nextPowerOf2(size_t n) {
 
 // Returns a size >= N for which the FFT can be computed highly efficiently
 inline size_t fftSize(size_t N) {
+  if (N <= 16)
+    return N;
+
   // Get the next power of 2
   size_t M = nextPowerOf2(N);
 
-  if (M >= 16) {
-    size_t M_9_16 = (M * 9) / 16;
-    if (M_9_16 >= N)
-      return M_9_16;
-  }
+  auto checkReduction = [&M, N](size_t numerator, size_t denominator) {
+    if (denominator <= M && M%denominator == 0) {
+      size_t P = (M * numerator) / denominator;
+      if (P >= N) {
+        M = P;
+        return true;
+      }
+    }
+    return false;
+  };
 
-  if (M >= 8) {
-    size_t M_5_8 = (M * 5) / 8;
-    if (M_5_8 >= N)
-      return M_5_8;
-  }
-
-  if (M >= 4) {
-    size_t M_3_4 = (M * 3) / 4;
-    if (M_3_4 >= N)
-      return M_3_4;
-  }
-
+  if(!checkReduction(9, 16))
+   checkReduction(3, 4);
+  checkReduction(5, 6);
+  checkReduction(27, 32);
+  checkReduction(7, 8);
+  
   return M;
 }
 } // namespace fftpp
