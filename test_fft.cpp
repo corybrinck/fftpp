@@ -50,7 +50,7 @@ bool testFFTRand(size_t N, std::int64_t xstride, std::int64_t ystride) {
                            fftpp::TransformDirection::Forward);
 
   fftpp::fft(x.data(), xstride, y.data(), ystride, tmp.data(), N,
-             fftpp::TransformDirection::Inverse, &fftObj);
+             fftpp::TransformDirection::Backward, &fftObj);
 
   T scalar = static_cast<T>(1) / N;
   T e = 0;
@@ -94,7 +94,7 @@ bool testFFT(size_t N, std::int64_t xstride, std::int64_t ystride) {
   }
 
   fftpp::fft(x.data(), xstride, y.data(), ystride, tmp.data(), N,
-             fftpp::TransformDirection::Inverse, &fftObj);
+             fftpp::TransformDirection::Backward, &fftObj);
 
   T scalar = static_cast<T>(1) / N;
   T e = 0;
@@ -128,7 +128,7 @@ bool testFFT2D(size_t M, size_t N, fftpp::ThreadScheduler *pScheduler) {
 
   auto fftObjects =
       fftpp::fft2D<T>(y.data(), x.data(), M, N,
-                      fftpp::TransformDirection::Inverse, nullptr, pScheduler);
+                      fftpp::TransformDirection::Backward, nullptr, pScheduler);
   for (size_t m = 0; m < M; ++m) {
     for (size_t n = 0; n < N; ++n) {
       auto value = y[N * m + n];
@@ -235,7 +235,7 @@ void fft2DTimer(size_t rows, size_t cols, size_t threads) {
   fftpp::fft2D<T>(y.data(), x.data(), rows, cols,
                   fftpp::TransformDirection::Forward, nullptr, &scheduler);
   auto t1 = std::chrono::high_resolution_clock::now();
-  std::cout << "2D (rows=" << rows << ",cols=" << cols << " FFT time with "
+  std::cout << "2D FFT (rows=" << rows << ",cols=" << cols << ") time with "
             << threads << " threads runtime : "
             << std::chrono::duration_cast<std::chrono::duration<double>>(t1 -
                                                                          t0)
